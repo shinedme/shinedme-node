@@ -53,6 +53,7 @@ pub struct Erc20Token<U> {
 pub struct AccountProfile {
     name: Vec<u8>,
     avatar: Vec<u8>,
+    photos: Vec<Vec<u8>>
 }
 
 #[derive(Encode, Decode, Default, Clone, PartialEq, Debug)]
@@ -183,7 +184,7 @@ decl_module! {
         pub fn update_user(_origin, name: Vec<u8>, avatar: Vec<u8>) -> DispatchResult {
             let sender = ensure_signed(_origin)?;
 
-            <Accounts<T>>::insert(sender, AccountProfile {name, avatar});
+            <Accounts<T>>::insert(sender, AccountProfile {name, avatar, photos: Vec::new()});
             Ok(())
         }
 
@@ -196,10 +197,13 @@ decl_module! {
 
             if let Some(affiliate_url) = affiliate_url {
                 ensure!(<Affiliations<T>>::contains_key(affiliate_url.clone()), "Affiliation doesn't exist");
-                <Photos<T>>::insert(photo, PhotoInfo { owner: sender.clone(), likes: Vec::new(), variants: Vec::new(), affiliate_url: Some(affiliate_url), comments: Vec::new()});
+                <Photos<T>>::insert(photo.clone(), PhotoInfo { owner: sender.clone(), likes: Vec::new(), variants: Vec::new(), affiliate_url: Some(affiliate_url), comments: Vec::new()});
             } else {
-                <Photos<T>>::insert(photo, PhotoInfo { owner: sender.clone(), likes: Vec::new(), variants: Vec::new(), affiliate_url: None, comments: Vec::new() });
+                <Photos<T>>::insert(photo.clone(), PhotoInfo { owner: sender.clone(), likes: Vec::new(), variants: Vec::new(), affiliate_url: None, comments: Vec::new() });
             }
+            let mut account = Self::accounts(sender.clone());
+            account.photos.push(photo);
+            <Accounts<T>>::insert(sender.clone(), account);
             Self::_credit(sender, 10.into())
         }
 
