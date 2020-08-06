@@ -61,6 +61,7 @@ pub struct PhotoInfo<AccountId> {
     affiliate_url: Option<(AccountId, Vec<u8>)>,
     likes: Vec<AccountId>,
     variants: Vec<Vec<u8>>,
+    comments: Vec<Vec<u8>>,
 }
 
 #[derive(Encode, Decode, Default, Clone, PartialEq, Debug)]
@@ -195,9 +196,9 @@ decl_module! {
 
             if let Some(affiliate_url) = affiliate_url {
                 ensure!(<Affiliations<T>>::contains_key(affiliate_url.clone()), "Affiliation doesn't exist");
-                <Photos<T>>::insert(photo, PhotoInfo { owner: sender.clone(), likes: Vec::new(), variants: Vec::new(), affiliate_url: Some(affiliate_url)});
+                <Photos<T>>::insert(photo, PhotoInfo { owner: sender.clone(), likes: Vec::new(), variants: Vec::new(), affiliate_url: Some(affiliate_url), comments: Vec::new()});
             } else {
-                <Photos<T>>::insert(photo, PhotoInfo { owner: sender.clone(), likes: Vec::new(), variants: Vec::new(), affiliate_url: None });
+                <Photos<T>>::insert(photo, PhotoInfo { owner: sender.clone(), likes: Vec::new(), variants: Vec::new(), affiliate_url: None, comments: Vec::new() });
             }
             Self::_credit(sender, 10.into())
         }
@@ -211,6 +212,15 @@ decl_module! {
                 ensure!(l != sender, "Already liked");
             }
             photo_info.likes.push(sender.clone());
+            <Photos<T>>::insert(photo.clone(), photo_info);
+            Self::_credit(sender, 1.into())
+        }
+
+        #[weight = 10_000]
+        pub fn comment_photo(_origin, photo: Vec<u8>, comment: Vec<u8>) -> DispatchResult {
+            let sender = ensure_signed(_origin)?;
+            let mut photo_info = Self::photos(photo.clone());
+            photo_info.comments.push(comment);
             <Photos<T>>::insert(photo.clone(), photo_info);
             Self::_credit(sender, 1.into())
         }
