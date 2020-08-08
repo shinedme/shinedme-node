@@ -53,13 +53,13 @@ pub struct Erc20Token<U> {
 pub struct AccountProfile {
     name: Vec<u8>,
     avatar: Vec<u8>,
-    photos: Vec<Vec<u8>>
+    photos: Vec<Vec<u8>>,
 }
 
 #[derive(Encode, Decode, Default, Clone, PartialEq, Debug)]
 pub struct PhotoInfo<AccountId> {
     owner: AccountId,
-    affiliate_url: Option<(AccountId, Vec<u8>)>,
+    affiliate_url: Option<Vec<u8>>,
     likes: Vec<AccountId>,
     variants: Vec<Vec<u8>>,
     comments: Vec<Vec<u8>>,
@@ -189,14 +189,13 @@ decl_module! {
         }
 
         #[weight = 10_000]
-        pub fn upload_photo(_origin, photo: Vec<u8>, affiliate_url: Option<(T::AccountId, Vec<u8>)>) -> DispatchResult {
+        pub fn upload_photo(_origin, photo: Vec<u8>, affiliate_url: Option<Vec<u8>>) -> DispatchResult {
             let sender = ensure_signed(_origin)?;
 
             ensure!(!<Photos<T>>::contains_key(photo.clone()), "This photo already uploaded");
             // TODO: off chain verify this is actually exist in ipfs, and it's a photo.
 
             if let Some(affiliate_url) = affiliate_url {
-                ensure!(<Affiliations<T>>::contains_key(affiliate_url.clone()), "Affiliation doesn't exist");
                 <Photos<T>>::insert(photo.clone(), PhotoInfo { owner: sender.clone(), likes: Vec::new(), variants: Vec::new(), affiliate_url: Some(affiliate_url), comments: Vec::new()});
             } else {
                 <Photos<T>>::insert(photo.clone(), PhotoInfo { owner: sender.clone(), likes: Vec::new(), variants: Vec::new(), affiliate_url: None, comments: Vec::new() });
