@@ -12,4 +12,4 @@ RUN --mount=type=cache,target=/var/www/node-template/target \
     --mount=type=cache,target=/var/www/node-template/.cargo/registry \
     cargo build --release
 
-ENTRYPOINT [ "./target/release/node-template", "--dev", "--ws-external" ]
+CMD [ "./target/release/node-template", "--dev", "--ws-external" ]

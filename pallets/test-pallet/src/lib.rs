@@ -66,9 +66,11 @@ pub struct PhotoInfo<AccountId> {
 }
 
 #[derive(Encode, Decode, Default, Clone, PartialEq, Debug)]
-pub struct AffiliateInfo<TokenBalance> {
-    single_credit: TokenBalance,
+pub struct AffiliateProvider<TokenBalance, AccountId> {
+    single_click_credit: TokenBalance,
     total_credit: TokenBalance,
+    payer: AccountId,
+    url_append: Vec<u8>
 }
 
 // storage for this module
@@ -83,7 +85,8 @@ decl_storage! {
       Allowance get(fn allowance): map hasher(blake2_128_concat) (T::AccountId, T::AccountId) => T::TokenBalance;
       Accounts get(fn accounts): map hasher(blake2_128_concat) T::AccountId => AccountProfile;
       Photos get(fn photos): map hasher(blake2_128_concat) Vec<u8> => PhotoInfo<T::AccountId>;
-      Affiliations get(fn affiliations): map hasher(blake2_128_concat) (T::AccountId, Vec<u8>) => AffiliateInfo<T::TokenBalance>;
+      // Website url => affiliation providers
+      Affiliations get(fn affiliations): map hasher(blake2_128_concat) Vec<u8> => Vec<AffiliateProvider<T::TokenBalance, T::AccountId>>;
   }
 }
 
@@ -152,15 +155,7 @@ decl_module! {
         #[weight = 10_000]
         fn approve(_origin, spender: T::AccountId, value: T::TokenBalance) -> DispatchResult {
             let sender = ensure_signed(_origin)?;
-            ensure!(<BalanceOf<T>>::contains_key(sender.clone()), "Account does not own this token");
-
-            let allowance = Self::allowance((sender.clone(), spender.clone()));
-            let updated_allowance = allowance.checked_add(&value).ok_or("overflow in calculating allowance")?;
-            <Allowance<T>>::insert((sender.clone(), spender.clone()), updated_allowance);
-
-            Self::deposit_event(RawEvent::Approval(sender.clone(), spender.clone(), value));
-
-            Ok(())
+            Self::_approve(sender, spender, value)
         }
 
         // the ERC20 standard transfer_from function
@@ -184,6 +179,9 @@ decl_module! {
         pub fn update_user(_origin, name: Vec<u8>, avatar: Vec<u8>) -> DispatchResult {
             let sender = ensure_signed(_origin)?;
 
+            if ! <Accounts<T>>::contains_key(sender.clone()) {
+                Self::_credit(sender.clone(), 100.into())?;
+            }
             <Accounts<T>>::insert(sender, AccountProfile {name, avatar, photos: Vec::new()});
             Ok(())
         }
@@ -242,23 +240,24 @@ decl_module! {
         }
 
         #[weight = 10_000]
-        pub fn create_affiliate(_origin, url: Vec<u8>, total_credit: T::TokenBalance, single_credit: T::TokenBalance) -> DispatchResult {
+        pub fn create_affiliate(_origin, url: Vec<u8>, total_credit: T::TokenBalance, single_click_credit: T::TokenBalance, url_append: Vec<u8>) -> DispatchResult {
             let sender = ensure_signed(_origin)?;
-            ensure!(!<Affiliations<T>>::contains_key((sender.clone(), url.clone())), "Affiliation already exist");
-            Self::_transfer(sender.clone(), Self::treasury(), total_credit)?;
-            <Affiliations<T>>::insert((sender, url), AffiliateInfo {total_credit, single_credit});
+            Self::_approve(sender.clone(), Self::treasury(), total_credit)?;
+            let mut affiliations = <Affiliations<T>>::get(url.clone());
+            affiliations.push(AffiliateProvider { total_credit, single_click_credit, payer: sender.clone(), url_append });
+            <Affiliations<T>>::insert(url, affiliations);
             Ok(())
         }
 
         #[weight = 10_000]
-        pub fn claim_credit(_origin, founder: T::AccountId, url: Vec<u8>) -> DispatchResult {
-            let sender = ensure_signed(_origin)?;
-            ensure!(<Affiliations<T>>::contains_key((founder.clone(), url.clone())), "Affiliation doesn't exist");
-            let mut affiliation_info = <Affiliations<T>>::get((founder.clone(), url.clone()));
-            let updated_credit = affiliation_info.total_credit.checked_sub(&affiliation_info.single_credit).ok_or("overflow in affiliation credit")?;
-            affiliation_info.total_credit = updated_credit;
-            <Affiliations<T>>::insert((founder, url), affiliation_info.clone());
-            Self::_transfer(Self::treasury(), sender.clone(), affiliation_info.single_credit)?;
+        pub fn pay_affiliate(_origin, url: Vec<u8>, url_append: Vec<u8>, to: T::AccountId) -> DispatchResult {
+            let providers = Self::affiliations(url.clone());
+            for p in providers {
+                if p.url_append == url_append {
+                    return Ok(Self::transfer_from(_origin, p.payer, to, p.single_click_credit)?);
+                }
+            }
+            ensure!(false, "affiliation does not exist");
             Ok(())
         }
     }
@@ -296,6 +295,18 @@ impl<T: Trait> Module<T> {
         let updated_to_balance =
             receiver_balance.checked_add(&value).ok_or("overflow in calculating balance")?;
         <BalanceOf<T>>::insert(to.clone(), updated_to_balance);
+        Ok(())
+    }
+
+    fn _approve(sender: T::AccountId, spender: T::AccountId, value: T::TokenBalance) -> DispatchResult {
+        ensure!(<BalanceOf<T>>::contains_key(sender.clone()), "Account does not own this token");
+
+        let allowance = Self::allowance((sender.clone(), spender.clone()));
+        let updated_allowance = allowance.checked_add(&value).ok_or("overflow in calculating allowance")?;
+        <Allowance<T>>::insert((sender.clone(), spender.clone()), updated_allowance);
+
+        Self::deposit_event(RawEvent::Approval(sender.clone(), spender.clone(), value));
+
         Ok(())
     }
 }
